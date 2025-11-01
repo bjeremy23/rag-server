@@ -201,26 +201,6 @@ Documents are stored in ChromaDB with persistence:
 - **Vector DB**: ChromaDB with persistent storage
 - **Similarity Metric**: Cosine similarity
 
-## Advanced Usage
-
-### Custom Metadata Filtering
-
-Search only documents from a specific author:
-```json
-{
-  "query": "machine learning",
-  "filter_metadata": {"author": "John Doe"}
-}
-```
-
-### Batch Document Import
-
-You can create a script to import multiple documents:
-```python
-import asyncio
-# Use MCP client to call add_document for each file
-```
-
 ## Troubleshooting
 
 **Issue**: Server fails to start
@@ -235,11 +215,3 @@ import asyncio
 - First run downloads the embedding model (~80MB)
 - Subsequent runs use cached model
 
-## Future Enhancements
-
-- [ ] Support for PDF, DOCX, and other file formats
-- [ ] Hybrid search (vector + keyword/BM25)
-- [ ] Reranking with cross-encoders
-- [ ] Multiple embedding model options
-- [ ] Cloud vector DB support (Pinecone, Weaviate)
-- [ ] Document update/versioning
