@@ -12,26 +12,58 @@ A Model Context Protocol (MCP) server for document vectorization and semantic se
 
 ## Tools Provided
 
-### 1. `add_document`
-Add and vectorize a document for RAG search.
+### 1. `add_file`
+Add and vectorize a file from the filesystem for RAG search.
 
 **Parameters:**
-- `content` (string, required): The document content to vectorize
-- `doc_id` (string, required): Unique identifier for the document
+- `file_path` (string, required): **Full absolute path** to the file on the filesystem
+- `doc_id` (string, optional): Unique identifier for the document (defaults to filename)
 - `metadata` (object, optional): Document metadata (title, author, source, date)
+
+**Important Requirements:**
+- **Must use full absolute path**: The file path must be complete (e.g., `/localdata/brownjer/docs/readme.txt`)
+- **Directory must be mounted**: The file's parent directory must be mounted as a volume in the Docker container through the MCP configuration JSON
+- The file must be readable by the container user
 
 **Example:**
 ```json
 {
-  "content": "Python is a high-level programming language...",
+  "file_path": "/localdata/brownjer/documents/python_guide.txt",
   "doc_id": "python_intro",
   "metadata": {
     "title": "Introduction to Python",
-    "author": "John Doe",
-    "source": "python_guide.pdf"
+    "author": "John Doe"
   }
 }
 ```
+
+**MCP Configuration Requirement:**
+
+For the `add_file` tool to access your filesystem, you must mount the appropriate directories in your MCP configuration. In `mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "rag": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v", "/localdata/brownjer:/localdata/brownjer:ro",
+        "-v", "/localdata/brownjer/.rag_data:/data",
+        "rag-server:latest"
+      ],
+      "disabled": false
+    }
+  }
+}
+```
+
+**Note**: 
+- The `--rm` flag automatically removes the container when it exits
+- The `:ro` (read-only) flag is recommended for source directories to prevent accidental modifications
+- The container is created fresh for each jibberish session
 
 ### 2. `search`
 Perform semantic search across all vectorized documents.
@@ -88,23 +120,24 @@ pip install -r requirements.txt
 
 ### For Jibberish Integration
 
-Add to `~/.vscode/mcp.json`:
+Add to `~/.jbrsh-mcp-servers.json`:
 
 ```json
 {
-  "mcpServers": {
-    "rag": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "${HOME}/.rag_data:/data",
-        "rag-server:latest"
-      ],
-      "disabled": false
-    }
+  "rag": {
+    "enabled": true,
+    "command": "docker",
+    "args": [
+      "run",
+      "-i",
+      "--rm",
+      "-v", "/localdata/brownjer:/localdata/brownjer:ro",
+      "-v", "/home/brownjer:/home/brownjer:ro",
+      "-v", "/localdata/brownjer/.rag_data:/data",
+      "rag-server:latest"
+    ],
+    "description": "RAG server for document vectorization and semantic search",
+    "tool_prefix": "rag"
   }
 }
 ```
@@ -112,28 +145,33 @@ Add to `~/.vscode/mcp.json`:
 Or for local Python installation:
 ```json
 {
-  "mcpServers": {
-    "rag": {
-      "command": "python",
-      "args": [
-        "/home/brownjer/bin/mcp/rag-server/mcp_rag_server.py"
-      ],
-      "env": {
-        "RAG_DATA_DIR": "${HOME}/.rag_data"
-      },
-      "disabled": false
-    }
+  "rag": {
+    "enabled": true,
+    "command": "python",
+    "args": [
+      "/home/brownjer/bin/mcp/rag-server/mcp_rag_server.py"
+    ],
+    "env": {
+      "RAG_DATA_DIR": "/localdata/brownjer/.rag_data"
+    },
+    "description": "RAG server for document vectorization and semantic search",
+    "tool_prefix": "rag"
   }
 }
 ```
 
 ## Usage Examples
 
-### Add a Document
+### Add a File from Filesystem
 ```bash
-# Using jibberish with MCP
-?add a document about kubernetes with content "Kubernetes is a container orchestration platform..." and id "k8s_intro"
+# Using jibberish with MCP - must use full absolute path
+?add file /localdata/brownjer/documents/kubernetes-guide.txt to the RAG database
+
+# With custom document ID and metadata
+?add file /localdata/brownjer/notes/python-tutorial.md with id "python_basics" to the RAG database
 ```
+
+**Important**: The directory containing the file (e.g., `/localdata/brownjer/documents/`) must be mounted in your Docker container configuration.
 
 ### Search Documents
 ```bash
