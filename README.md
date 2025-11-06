@@ -103,11 +103,57 @@ List all documents in the vector database with their metadata.
 
 ### Option 1: Docker (Recommended)
 
-Build the Docker image:
+#### Using Pre-built Image from GitHub Container Registry
+
+The easiest way to get started is to use the pre-built image:
+
+```bash
+# In your ~/.jbrsh-mcp-servers.json or docker run command, use:
+ghcr.io/bjeremy23/rag-server:latest
+```
+
+Example MCP configuration:
+```json
+{
+  "rag": {
+    "enabled": true,
+    "command": "docker",
+    "args": [
+      "run", "-i", "--rm",
+      "-v", "/path/to/your/data:/localdata:ro",
+      "-v", "/path/to/your/data/.rag_data:/data",
+      "ghcr.io/bjeremy23/rag-server:latest"
+    ]
+  }
+}
+```
+
+**If you cannot pull the image** (e.g., due to network restrictions or VPN policies), build it locally instead.
+
+#### Building the Image Locally
+
+If you don't have access to pull from GitHub Container Registry or prefer to build locally:
+
 ```bash
 git clone https://github.com/bjeremy23/rag-server.git
-cd rag-server   # or: cd /path/to/rag-server
+cd rag-server
 docker build -t rag-server:latest .
+```
+
+Then use `rag-server:latest` in your MCP configuration:
+```json
+{
+  "rag": {
+    "enabled": true,
+    "command": "docker",
+    "args": [
+      "run", "-i", "--rm",
+      "-v", "/path/to/your/data:/localdata:ro",
+      "-v", "/path/to/your/data/.rag_data:/data",
+      "rag-server:latest"
+    ]
+  }
+}
 ```
 
 #### Docker with Local Model Cache (Offline Environments)
