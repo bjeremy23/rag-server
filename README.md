@@ -105,9 +105,88 @@ List all documents in the vector database with their metadata.
 
 Build the Docker image:
 ```bash
-cd /home/brownjer/bin/mcp/rag-server
+git clone https://github.com/bjeremy23/rag-server.git
+cd rag-server   # or: cd /path/to/rag-server
 docker build -t rag-server:latest .
 ```
+
+#### Docker with Local Model Cache (Offline Environments)
+
+If you don't have internet access inside your Docker container, or want to avoid re-downloading models on each container start, you can pre-download the embedding model to a persistent mounted directory.
+
+##### Setup for Offline Installation
+
+**Step 1: Create a data directory on your offline host**
+```bash
+mkdir -p /path/to/your/data/.rag_data
+```
+
+Replace `/path/to/your/data/` with your actual path where you want to store the model cache.
+
+**Step 2: Download the model on a machine with internet access**
+
+On any machine with internet access, download the Hugging Face model:
+```bash
+mkdir -p ~/rag_model_cache
+TRANSFORMERS_CACHE=~/rag_model_cache python3 << 'EOF'
+from sentence_transformers import SentenceTransformer
+print("Downloading embedding model...")
+model = SentenceTransformer('all-MiniLM-L6-v2')
+print(f"✓ Model downloaded")
+EOF
+```
+
+**Step 3: Transfer the model to your offline host**
+
+Copy the downloaded model from the internet-connected machine to your offline host:
+```bash
+scp -r ~/rag_model_cache/* username@offline_host:/path/to/your/data/.rag_data/
+```
+
+Replace:
+- `username` with your SSH username
+- `offline_host` with your actual hostname or IP address
+- `/path/to/your/data/` with the same path you created in Step 1
+
+Example:
+```bash
+scp -r ~/rag_model_cache/* brownjer@192.168.1.100:/data/models/.rag_data/
+```
+
+**Step 4: Mount the directory in your MCP configuration**
+
+On your offline host, in `~/.jbrsh-mcp-servers.json`, configure the RAG server to mount this directory as `/data`:
+```json
+{
+  "rag": {
+    "enabled": true,
+    "command": "docker",
+    "args": [
+      "run", "-i", "--rm",
+      "-v", "/path/to/your/data:/localdata:ro",
+      "-v", "/path/to/your/data/.rag_data:/data",
+      "rag-server:latest"
+    ],
+    "description": "RAG server for document vectorization and semantic search",
+    "tool_prefix": "rag"
+  }
+}
+```
+
+Replace `/path/to/your/data/` with the actual directory path on your offline host.
+
+**How it works:**
+- The model files are stored in `/path/to/your/data/.rag_data` on your host
+- When the container runs, this directory is mounted at `/data` inside the container
+- The server finds the pre-downloaded model in the mounted volume and uses it directly
+- No internet connection required inside the container
+- The model cache persists across container restarts
+
+**Benefits:**
+- Works completely offline
+- No repeated model downloads
+- Faster container startup (model already available)
+- Can be set up once and reused indefinitely
 
 ### Option 2: Local Python
 
@@ -131,9 +210,8 @@ Add to `~/.jbrsh-mcp-servers.json`:
       "run",
       "-i",
       "--rm",
-      "-v", "/localdata/brownjer:/localdata/brownjer:ro",
-      "-v", "/home/brownjer:/home/brownjer:ro",
-      "-v", "/localdata/brownjer/.rag_data:/data",
+      "-v", "`/path/to/your/data/:`/path/to/your/data/:ro",
+      "-v", "`/path/to/your/data/.rag_data:/data",
       "rag-server:latest"
     ],
     "description": "RAG server for document vectorization and semantic search",
@@ -149,10 +227,10 @@ Or for local Python installation:
     "enabled": true,
     "command": "python",
     "args": [
-      "/home/brownjer/bin/mcp/rag-server/mcp_rag_server.py"
+      "`/path/to/your/rag-server/mcp_rag_server.py"
     ],
     "env": {
-      "RAG_DATA_DIR": "/localdata/brownjer/.rag_data"
+      "RAG_DATA_DIR": "`/path/to/your/data/.rag_data"
     },
     "description": "RAG server for document vectorization and semantic search",
     "tool_prefix": "rag"
