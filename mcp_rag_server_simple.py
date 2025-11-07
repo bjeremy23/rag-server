@@ -6,7 +6,6 @@ Simple JSON-RPC implementation over stdio
 
 import json
 import sys
-import os
 import logging
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -31,40 +30,32 @@ class RAGServer:
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
-        # Lazy initialization
-        self.chroma_client = None
-        self.collection = None
+        # Initialize ChromaDB with PersistentClient for automatic persistence
+        self.chroma_client = chromadb.PersistentClient(
+            path=str(self.data_dir / "chroma")
+        )
+        
+        # Get or create collection
+        try:
+            self.collection = self.chroma_client.get_collection("documents")
+            logger.info("Loaded existing collection")
+        except Exception:
+            self.collection = self.chroma_client.create_collection(
+                name="documents",
+                metadata={"description": "Document collection for RAG"}
+            )
+            logger.info("Created new collection")
+        
+        # Lazy-load embedding model
         self.model = None
         
-        # Initialize text splitter (lightweight)
+        # Initialize text splitter
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=500,
             chunk_overlap=50,
             length_function=len,
             separators=["\n\n", "\n", ". ", " ", ""]
         )
-    
-    def _get_collection(self):
-        """Lazy-load ChromaDB collection."""
-        if self.collection is None:
-            logger.info("Initializing ChromaDB...")
-            # Initialize ChromaDB with PersistentClient and telemetry disabled
-            self.chroma_client = chromadb.PersistentClient(
-                path=str(self.data_dir / "chroma"),
-                settings=Settings(anonymized_telemetry=False)
-            )
-            
-            # Get or create collection
-            try:
-                self.collection = self.chroma_client.get_collection("documents")
-                logger.info("Loaded existing collection")
-            except Exception:
-                self.collection = self.chroma_client.create_collection(
-                    name="documents",
-                    metadata={"description": "Document collection for RAG"}
-                )
-                logger.info("Created new collection")
-        return self.collection
     
     def _get_model(self):
         """Lazy-load the embedding model."""
@@ -190,24 +181,10 @@ class RAGServer:
         if metadata is None:
             metadata = {}
         
-        # Get the working directory from jibberish (passed via environment variable)
-        jbrsh_cwd = os.environ.get('JBRSH_CWD', os.getcwd())
-        
-        # Handle relative paths and '.' by resolving against jibberish's working directory
-        file_path = Path(filepath)
-        
-        # If path starts with '.', expand it to jbrsh cwd
-        if str(filepath).startswith('.'):
-            file_path = Path(jbrsh_cwd) / file_path
-        # If not absolute, assume it's relative to jbrsh cwd
-        elif not file_path.is_absolute():
-            file_path = Path(jbrsh_cwd) / file_path
-        
-        # Expand user home directory and resolve to absolute path
-        file_path = file_path.expanduser().resolve()
+        file_path = Path(filepath).expanduser().resolve()
         
         if not file_path.exists():
-            return f"Error: File not found: {filepath} (resolved to: {file_path})"
+            return f"Error: File not found: {filepath}"
         
         if not file_path.is_file():
             return f"Error: Not a file: {filepath}"
@@ -226,11 +203,11 @@ class RAGServer:
             "file_extension": file_path.suffix
         })
         
-        result = self._add_document(content, doc_id, metadata)
+        result = self.add_document(content, doc_id, metadata)
         return f"✓ Successfully imported file: {file_path.name}\n  - Full path: {file_path}\n  - File size: {len(content)} characters\n{result}"
     
-    def _add_document(self, content: str, doc_id: str, metadata: Optional[Dict] = None) -> str:
-        """Internal method to add and vectorize a document."""
+    def add_document(self, content: str, doc_id: str, metadata: Optional[Dict] = None) -> str:
+        """Add and vectorize a document."""
         if metadata is None:
             metadata = {}
         
@@ -250,8 +227,7 @@ class RAGServer:
         ]
         
         # Store in vector DB
-        collection = self._get_collection()
-        collection.add(
+        self.collection.add(
             embeddings=embeddings,
             documents=chunks,
             metadatas=chunk_metadata,
@@ -278,8 +254,7 @@ class RAGServer:
         if filter_metadata:
             search_kwargs["where"] = filter_metadata
         
-        collection = self._get_collection()
-        results = collection.query(**search_kwargs)
+        results = self.collection.query(**search_kwargs)
         
         if not results['documents'][0]:
             return "No results found."
@@ -303,19 +278,17 @@ class RAGServer:
     
     def delete_document(self, doc_id: str) -> str:
         """Delete a document."""
-        collection = self._get_collection()
-        results = collection.get(where={"doc_id": doc_id})
+        results = self.collection.get(where={"doc_id": doc_id})
         
         if not results['ids']:
             return f"Document '{doc_id}' not found."
         
-        collection.delete(ids=results['ids'])
+        self.collection.delete(ids=results['ids'])
         return f"✓ Deleted document '{doc_id}' ({len(results['ids'])} chunks removed)"
     
     def list_documents(self) -> str:
         """List all documents."""
-        collection = self._get_collection()
-        results = collection.get()
+        results = self.collection.get()
         
         if not results['ids']:
             return "No documents in the database."
