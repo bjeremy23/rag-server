@@ -11,8 +11,10 @@ ENV/
 dist/
 build/
 
-# Model cache (large files)
-model_cache/
+# Model cache (ignore large model files, but keep directory structure)
+model_cache/hub/models--*
+model_cache/hub/*
+!model_cache/hub/.gitkeep
 
 # Data directory
 *.rag_data/
